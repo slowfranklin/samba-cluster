@@ -1,0 +1,5 @@
+.vagrant
+nohup.out
+gpfs.vdi
+files/sernet_creds
+files/*.rpm

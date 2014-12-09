@@ -1,0 +1,21 @@
+Samba/GPFS cluster
+
+PREREQUISITES
+
+* GPFS packages located in files/
+* Credentials for enterprisesamba.com saved in files/sernet_creds
+* Centos 6.6 base image puppet/centos-6.6 with Puppet installed
+
+CONFIGURATION
+
+* adjust variables in Vagrantfile
+* adjust variables in manifest/cluster.pp
+* adjust credentials in files/sernet_creds
+
+GPFS RPMs:
+
+  files/gpfs.base-3.5.0-0.x86_64.rpm
+  files/gpfs.base-3.5.0-15.x86_64.update.rpm
+  files/gpfs.docs-3.5.0-15.noarch.rpm
+  files/gpfs.gpl-3.5.0-15.noarch.rpm
+  files/gpfs.msg.en_US-3.5.0-15.noarch.rpm
