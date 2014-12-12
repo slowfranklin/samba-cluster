@@ -14,6 +14,9 @@ group { 'puppet': ensure => 'present' }
 # http://grokbase.com/t/gg/puppet-users/14a715pdsq/annoying-allow-virtual-parameter-warning
 Package { allow_virtual => true } 
 
+# missing packages for compiling Samba:
+# git emacs-nox python-devel libacl-devel openldap-devel
+
 class samba {
   yumrepo { "sernet-samba":
     baseurl=> "https://$sernet_creds@$sernet_repo/",
