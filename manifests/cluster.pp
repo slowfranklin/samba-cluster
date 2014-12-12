@@ -9,6 +9,43 @@ $ctdb_rpm_url = "http://download.sernet.de/pub/ctdb/1.0.114/rhel/6/x86_64/ctdb-1
 $gpfs_version = "3.5.0"
 $gpfs_patchlevel = "15"
 
+$smb_conf = "[Global]
+        clustering = yes
+        netbios name = Samba Cluster
+        workgroup = CLUSTER
+        security = user
+        gpfs:dfreequota = yes
+        gpfs:hsm = yes
+        gpfs:leases = yes
+        gpfs:prealloc = yes
+        gpfs:sharemodes = yes
+        gpfs:winattr = yes
+        gpfs:ftruncate = no
+        nfs4:acedup = merge
+        nfs4:chown = yes
+        nfs4:mode = simple
+        ea support = yes
+
+[test]
+        path = /gpfs/test
+        writeable = yes
+        vfs objects = fruit streams_xattr gpfs
+"
+
+$ctdb_conf = "CTDB_RECOVERY_LOCK=/gpfs/ctdb.lock
+CTDB_NODES=/etc/ctdb/nodes
+CTDB_PUBLIC_ADDRESSES=/etc/ctdb/public_addresses
+CTDB_PUBLIC_INTERFACE=eth1
+"
+
+$ctdb_nodes = "10.10.10.90
+10.10.10.91
+"
+
+$ctdb_addresses = "10.10.10.92
+10.10.10.93
+"
+
 group { 'puppet': ensure => 'present' }
 
 # http://grokbase.com/t/gg/puppet-users/14a715pdsq/annoying-allow-virtual-parameter-warning
@@ -17,7 +54,16 @@ Package { allow_virtual => true }
 # missing packages for compiling Samba:
 # git emacs-nox python-devel libacl-devel openldap-devel
 
+class packages {
+  $buildtools = ["automake", "autoconf", "make", "kernel-headers", "kernel-devel", "gcc", "gcc-c++", "rpmdevtools", "ksh", "rsh", "libaio", "emacs-nox", "python-devel", "libacl-devel", "openldap-devel"]
+  package { $buildtools:
+    ensure => "installed"
+  }
+}
+
 class samba {
+  require packages
+
   yumrepo { "sernet-samba":
     baseurl=> "https://$sernet_creds@$sernet_repo/",
     gpgcheck=> "1",
@@ -40,15 +86,18 @@ class samba {
     ensure => "installed",
     provider => "rpm"
   }
+
+  file { "smb_conf":
+    path => "/etc/samba/smb.conf",
+    content => $smb_conf,
+    require => Package["sernet-samba"]
+  }
 }
 
 class gpfs {
-  package { "compat-libstdc++-33":
-    ensure => "installed"
-  }
+  require packages
 
-  $buildtools = ["automake", "autoconf", "make", "kernel-headers", "kernel-devel", "gcc", "gcc-c++", "rpmdevtools", "ksh", "rsh", "libaio"]
-  package { $buildtools:
+  package { "compat-libstdc++-33":
     ensure => "installed"
   }
 
@@ -183,9 +232,30 @@ class cluster {
   }
 }
 
+class ctdb {
+  require samba
+
+  file { "ctdb_conf":
+    path => "/etc/sysconfig/ctdb",
+    content => $ctdb_conf
+  }
+
+  file { "ctdb_nodes":
+    path => "/etc/ctdb/nodes",
+    content => $ctdb_nodes
+  }
+
+  file { "ctdb_addresses":
+    path => "/etc/ctdb/public_addresses",
+    content => $ctdb_addresses
+  }
+}
+
+include packages
 include network
 include ssh
 include samba
 include gpfs
 include gpfs-km
 include cluster
+include ctdb
