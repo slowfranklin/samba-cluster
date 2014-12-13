@@ -42,8 +42,8 @@ $ctdb_nodes = "10.10.10.90
 10.10.10.91
 "
 
-$ctdb_addresses = "10.10.10.92
-10.10.10.93
+$ctdb_addresses = "10.10.10.92/24 eth1
+10.10.10.93/24 eth1
 "
 
 group { 'puppet': ensure => 'present' }
@@ -57,6 +57,11 @@ Package { allow_virtual => true }
 class packages {
   $buildtools = ["automake", "autoconf", "make", "kernel-headers", "kernel-devel", "gcc", "gcc-c++", "rpmdevtools", "ksh", "rsh", "libaio", "emacs-nox", "python-devel", "libacl-devel", "openldap-devel"]
   package { $buildtools:
+    ensure => "installed"
+  }
+
+  # doesn't work in the buildtools var above
+  package { "compat-libstdc++-33":
     ensure => "installed"
   }
 }
@@ -97,20 +102,13 @@ class samba {
 class gpfs {
   require packages
 
-  package { "compat-libstdc++-33":
-    ensure => "installed"
-  }
-
   package { "gpfs.base":
     source => "file:///vagrant/files/gpfs.base-$gpfs_version-0.x86_64.rpm",
     ensure => "installed",
-    require => Package[$buildtools],
     provider => "rpm"
-  }
-
+  } ~>
   exec { "update-gpfs":
     command => "/bin/rpm -U /vagrant/files/gpfs.base-$gpfs_version-$gpfs_patchlevel.x86_64.update.rpm",
-    subscribe => Package["gpfs.base"],
     refreshonly => true
   }
 
@@ -234,6 +232,7 @@ class cluster {
 
 class ctdb {
   require samba
+  require cluster
 
   file { "ctdb_conf":
     path => "/etc/sysconfig/ctdb",
@@ -251,6 +250,14 @@ class ctdb {
   }
 }
 
+class services {
+  require ctdb
+
+  service { "ctdb":
+    ensure => running,
+    enable => true
+}
+
 include packages
 include network
 include ssh
@@ -259,3 +266,4 @@ include gpfs
 include gpfs-km
 include cluster
 include ctdb
+include services
