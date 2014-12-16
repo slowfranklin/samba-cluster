@@ -46,6 +46,17 @@ $ctdb_addresses = "10.10.10.92/24 eth1
 10.10.10.93/24 eth1
 "
 
+$sernet_samba_defaults = "SAMBA_START_MODE=classic
+SAMBA_RESTART_ON_UPDATE=no
+NMBD_EXTRA_OPTS=
+WINBINDD_EXTRA_OPTS=
+SMBD_EXTRA_OPTS=
+SAMBA_EXTRA_OPTS=
+SAMBA_IGNORE_NSUPDATE_G=no"
+
+$selinux_conf = "SELINUX=permissive
+SELINUXTYPE=targeted"
+
 group { 'puppet': ensure => 'present' }
 
 # http://grokbase.com/t/gg/puppet-users/14a715pdsq/annoying-allow-virtual-parameter-warning
@@ -54,8 +65,19 @@ Package { allow_virtual => true }
 # missing packages for compiling Samba:
 # git emacs-nox python-devel libacl-devel openldap-devel
 
+class base {
+  file { "selinux":
+    path => "/etc/sysconfig/selinux",
+    content => $selinux_conf
+  } ~>
+  exec { "setenforce":
+    command "/usr/sbin/setenforce 0",
+    refreshonly => true
+  }
+}
+
 class packages {
-  $buildtools = ["automake", "autoconf", "make", "kernel-headers", "kernel-devel", "gcc", "gcc-c++", "rpmdevtools", "ksh", "rsh", "libaio", "emacs-nox", "python-devel", "libacl-devel", "openldap-devel"]
+  $buildtools = ["automake", "autoconf", "make", "kernel-headers", "kernel-devel", "gcc", "gcc-c++", "rpmdevtools", "ksh", "rsh", "libaio", "emacs-nox", "python-devel", "libacl-devel", "openldap-devel", "git"]
   package { $buildtools:
     ensure => "installed"
   }
@@ -84,6 +106,12 @@ class samba {
   package { "sernet-samba":
     ensure => present,
     require => Yumrepo["sernet-samba"]
+  }
+
+  file { "sernet_samba_defaults":
+    path => "/etc/default/sernet-samba",
+    content => $sernet_samba_defaults,
+    require => Package["sernet-samba"]
   }
 
   package { "ctdb":
@@ -193,7 +221,8 @@ class cluster {
   require ssh
 
   file { "/gpfs":
-    ensure => "directory"
+    ensure => "directory",
+    mode => 0755
   }
 
   file { "diskdef.txt":
@@ -230,6 +259,15 @@ class cluster {
   }
 }
 
+class share {
+  require cluster
+
+  file { "/gpfs/test":
+    ensure => "directory",
+    mode => 0777
+  }
+}
+
 class ctdb {
   require samba
   require cluster
@@ -256,8 +294,10 @@ class services {
   service { "ctdb":
     ensure => running,
     enable => true
+  }
 }
 
+include base
 include packages
 include network
 include ssh
