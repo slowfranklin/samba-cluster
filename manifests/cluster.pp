@@ -63,9 +63,6 @@ group { 'puppet': ensure => 'present' }
 # http://grokbase.com/t/gg/puppet-users/14a715pdsq/annoying-allow-virtual-parameter-warning
 Package { allow_virtual => true } 
 
-# missing packages for compiling Samba:
-# git emacs-nox python-devel libacl-devel openldap-devel
-
 class base {
   file { "selinux":
     path => "/etc/sysconfig/selinux",
@@ -77,20 +74,45 @@ class base {
   }
 }
 
-class packages {
-  $buildtools = ["automake", "autoconf", "make", "kernel-headers", "kernel-devel", "gcc", "gcc-c++", "rpmdevtools", "ksh", "rsh", "libaio", "emacs-nox", "python-devel", "libacl-devel", "openldap-devel", "git"]
-  package { $buildtools:
-    ensure => "installed"
+class network {
+    file { "/etc/hosts":
+      content => "$hosts",
+    }
+
+    file { "/etc/resolv.conf":
+      content => "nameserver $nameserver",
+    }
+}
+
+class ssh {
+  require network
+
+  file { "/root/.ssh":
+    ensure => "directory"
   }
 
-  # doesn't work in the buildtools var above
-  package { "compat-libstdc++-33":
-    ensure => "installed"
+  file { "ssh-key":
+    path => "/root/.ssh/id_rsa",
+    ensure => "present",
+    source => "/vagrant/files/id_rsa",
+    require => File["/root/.ssh"],
+  } ~>
+  exec { "authorized-keys":
+    command => "/bin/cat /vagrant/files/id_rsa.pub >> /root/.ssh/authorized_keys",
+    refreshonly => true,
+  }
+
+  file { "ssh_config":
+    path => "/etc/ssh/ssh_config",
+    content => "StrictHostKeyChecking=no",
+    ensure => "present",
+    owner => "root",
+    group => "root"
   }
 }
 
-class samba {
-  require packages
+class packages {
+  require base
 
   yumrepo { "sernet-samba":
     baseurl=> "https://$sernet_creds@$sernet_repo/",
@@ -102,28 +124,16 @@ class samba {
     command => "/usr/bin/yum clean all && /usr/bin/yum check-update",
     refreshonly => true,
     returns => [0, 100]
-  }
-
+  } ~>
+  exec { "packages":
+    command => "/usr/bin/yum -qy install automake autoconf make kernel-headers kernel-devel gcc gcc-c++ compat-libstdc++-33 rpmdevtools ksh rsh libaio emacs-nox python-devel libacl-devel openldap-devel git sernet-samba sernet-samba-ctdb",
+    refreshonly => true
+  } ~>
   package { "sernet-samba":
     ensure => present,
-    require => Yumrepo["sernet-samba"]
-  }
-
+  } ~>
   package { "sernet-samba-ctdb":
     ensure => present,
-    require => Yumrepo["sernet-samba"]
-  }
-
-  file { "sernet_samba_defaults":
-    path => "/etc/default/sernet-samba",
-    content => $sernet_samba_defaults,
-    require => Package["sernet-samba"]
-  }
-
-  file { "smb_conf":
-    path => "/etc/samba/smb.conf",
-    content => $smb_conf,
-    require => Package["sernet-samba"]
   }
 }
 
@@ -179,43 +189,6 @@ class gpfs-km {
   }
 }
 
-class network {
-    file { "/etc/hosts":
-      content => "$hosts",
-    }
-
-    file { "/etc/resolv.conf":
-      content => "nameserver $nameserver",
-    }
-}
-
-class ssh {
-  require network
-
-  file { "/root/.ssh":
-    ensure => "directory"
-  }
-
-  file { "ssh-key":
-    path => "/root/.ssh/id_rsa",
-    ensure => "present",
-    source => "/vagrant/files/id_rsa",
-    require => File["/root/.ssh"],
-  } ~>
-  exec { "authorized-keys":
-    command => "/bin/cat /vagrant/files/id_rsa.pub >> /root/.ssh/authorized_keys",
-    refreshonly => true,
-  }
-
-  file { "ssh_config":
-    path => "/etc/ssh/ssh_config",
-    content => "StrictHostKeyChecking=no",
-    ensure => "present",
-    owner => "root",
-    group => "root"
-  }
-}
-
 class cluster {
   require gpfs-km
   require ssh
@@ -259,37 +232,62 @@ class cluster {
   }
 }
 
-class share {
+class ctdb {
+  require packages
   require cluster
+
+  exec { "mmstartup2":
+    command => "/usr/lpp/mmfs/bin/mmstartup -a",
+  } ~>
+  exec { "mmmount2":
+    command => "/usr/lpp/mmfs/bin/mmmount /gpfs -a",
+    refreshonly => true
+  }
+
+  file { "ctdb_conf":
+    path => "/etc/sysconfig/ctdb",
+    content => $ctdb_conf,
+    require => Package["sernet-samba-ctdb"]
+  }
+
+  file { "ctdb_nodes":
+    path => "/etc/ctdb/nodes",
+    content => $ctdb_nodes,
+    require => Package["sernet-samba-ctdb"]
+  }
+
+  file { "ctdb_addresses":
+    path => "/etc/ctdb/public_addresses",
+    content => $ctdb_addresses,
+    require => Package["sernet-samba-ctdb"]
+  }
+}
+
+class samba {
+  require packages
+  require ctdb
 
   file { "/gpfs/test":
     ensure => "directory",
     mode => 0777
   }
-}
 
-class ctdb {
-  require samba
-  require cluster
-
-  file { "ctdb_conf":
-    path => "/etc/sysconfig/ctdb",
-    content => $ctdb_conf
+  file { "sernet_samba_defaults":
+    path => "/etc/default/sernet-samba",
+    content => $sernet_samba_defaults,
+    require => Package["sernet-samba"]
   }
 
-  file { "ctdb_nodes":
-    path => "/etc/ctdb/nodes",
-    content => $ctdb_nodes
-  }
-
-  file { "ctdb_addresses":
-    path => "/etc/ctdb/public_addresses",
-    content => $ctdb_addresses
+  file { "smb_conf":
+    path => "/etc/samba/smb.conf",
+    content => $smb_conf,
+    require => Package["sernet-samba"]
   }
 }
 
 class services {
   require ctdb
+  require samba
 
   service { "sernet-samba-ctdb":
     ensure => running,
