@@ -4,8 +4,9 @@
 $hosts = "10.10.10.90 node1\n10.10.10.91 node2\n"
 $nameserver = "10.10.10.1"
 $sernet_creds = file("/vagrant/files/sernet_creds")
-$sernet_repo = "download.sernet.de/packages/samba/4.1/centos/6"
-$ctdb_rpm_url = "http://download.sernet.de/pub/ctdb/1.0.114/rhel/6/x86_64/ctdb-1.0.114.9-1.x86_64.rpm"
+# $sernet_repo = "download.sernet.de/packages/samba/4.1/centos/6"
+$sernet_repo = "download.sernet.de/packages/samba/.staging/4.2/centos/6/"
+
 $gpfs_version = "3.5.0"
 $gpfs_patchlevel = "15"
 
@@ -71,7 +72,7 @@ class base {
     content => $selinux_conf
   } ~>
   exec { "setenforce":
-    command "/usr/sbin/setenforce 0",
+    command => "/usr/sbin/setenforce 0",
     refreshonly => true
   }
 }
@@ -93,7 +94,7 @@ class samba {
 
   yumrepo { "sernet-samba":
     baseurl=> "https://$sernet_creds@$sernet_repo/",
-    gpgcheck=> "1",
+    gpgcheck=> "0",
     gpgkey=> "https://$sernet_creds@$sernet_repo/repodata/repomd.xml.key",
     enabled=> "1",
   } ~>
@@ -108,16 +109,15 @@ class samba {
     require => Yumrepo["sernet-samba"]
   }
 
+  package { "sernet-samba-ctdb":
+    ensure => present,
+    require => Yumrepo["sernet-samba"]
+  }
+
   file { "sernet_samba_defaults":
     path => "/etc/default/sernet-samba",
     content => $sernet_samba_defaults,
     require => Package["sernet-samba"]
-  }
-
-  package { "ctdb":
-    source => "$ctdb_rpm_url",
-    ensure => "installed",
-    provider => "rpm"
   }
 
   file { "smb_conf":
@@ -291,7 +291,7 @@ class ctdb {
 class services {
   require ctdb
 
-  service { "ctdb":
+  service { "sernet-samba-ctdb":
     ensure => running,
     enable => true
   }
