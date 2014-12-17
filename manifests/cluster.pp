@@ -67,10 +67,10 @@ class base {
   file { "selinux":
     path => "/etc/sysconfig/selinux",
     content => $selinux_conf
-  } ~>
+  }
+
   exec { "setenforce":
-    command => "/usr/sbin/setenforce 0",
-    refreshonly => true
+    command => "/usr/sbin/setenforce 0"
   }
 }
 
